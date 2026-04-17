@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Tiro+Devanagari+Hindi:ital@0;1&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ================================================================
+   TruthLens — Bharat-Tech Hybrid Design System
+   Ashoka blue + saffron + emerald + deep navy. All HSL.
+   ================================================================ */
+
+@layer base {
+  :root {
+    /* surfaces */
+    --background: 222 47% 5%;
+    --foreground: 40 38% 96%;
+
+    --surface: 222 40% 8%;
+    --surface-2: 222 35% 11%;
+    --surface-3: 222 30% 15%;
+
+    --card: 222 40% 8%;
+    --card-foreground: 40 38% 96%;
+    --popover: 222 40% 9%;
+    --popover-foreground: 40 38% 96%;
+
+    /* brand — Ashoka blue */
+    --primary: 220 95% 58%;
+    --primary-foreground: 222 47% 5%;
+    --primary-glow: 220 100% 70%;
+
+    /* secondary — saffron */
+    --secondary: 28 96% 56%;
+    --secondary-foreground: 222 47% 5%;
+    --saffron: 28 96% 56%;
+    --saffron-glow: 32 100% 65%;
+
+    /* accent — emerald */
+    --accent: 152 72% 45%;
+    --accent-foreground: 222 47% 5%;
+    --emerald-glow: 152 80% 55%;
+
+    /* utility */
+    --muted: 222 25% 16%;
+    --muted-foreground: 220 14% 65%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 40 38% 96%;
+    --warning: 38 95% 58%;
+    --success: 152 72% 45%;
+
+    --border: 222 30% 18%;
+    --input: 222 30% 16%;
+    --ring: 220 95% 58%;
+
+    --radius: 0.75rem;
+
+    /* gradients */
+    --gradient-hero: radial-gradient(ellipse at 20% 0%, hsl(220 95% 25% / 0.55), transparent 60%),
+                      radial-gradient(ellipse at 80% 100%, hsl(28 96% 30% / 0.35), transparent 55%),
+                      linear-gradient(180deg, hsl(222 47% 5%) 0%, hsl(222 50% 7%) 100%);
+    --gradient-tricolor: linear-gradient(90deg, hsl(28 96% 56%) 0%, hsl(40 38% 96%) 50%, hsl(152 72% 45%) 100%);
+    --gradient-brand: linear-gradient(135deg, hsl(220 95% 58%) 0%, hsl(200 95% 50%) 50%, hsl(180 90% 50%) 100%);
+    --gradient-saffron: linear-gradient(135deg, hsl(28 96% 56%), hsl(18 96% 52%));
+    --gradient-emerald: linear-gradient(135deg, hsl(152 72% 45%), hsl(168 72% 42%));
+
+    /* shadows / glows */
+    --shadow-glow-blue: 0 0 40px hsl(220 95% 58% / 0.45), 0 0 80px hsl(220 95% 58% / 0.2);
+    --shadow-glow-saffron: 0 0 40px hsl(28 96% 56% / 0.4);
+    --shadow-glow-emerald: 0 0 40px hsl(152 72% 45% / 0.4);
+    --shadow-panel: 0 30px 60px -20px hsl(222 80% 2% / 0.7), 0 0 0 1px hsl(222 30% 18%);
+    --shadow-soft: 0 10px 30px -10px hsl(222 80% 2% / 0.5);
+
+    /* glass */
+    --glass-bg: hsl(222 40% 9% / 0.7);
+    --glass-border: hsl(220 80% 60% / 0.18);
+
+    /* motion */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+    --sidebar-background: 222 40% 8%;
+    --sidebar-foreground: 40 38% 96%;
+    --sidebar-primary: 220 95% 58%;
+    --sidebar-primary-foreground: 222 47% 5%;
+    --sidebar-accent: 222 35% 12%;
+    --sidebar-accent-foreground: 40 38% 96%;
+    --sidebar-border: 222 30% 18%;
+    --sidebar-ring: 220 95% 58%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    background-image: var(--gradient-hero);
+    background-attachment: fixed;
+  }
+
+  ::selection { background: hsl(var(--primary) / 0.35); color: hsl(var(--foreground)); }
+
+  /* Subtle grid overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(hsl(220 80% 60% / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(220 80% 60% / 0.04) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 75%);
+    z-index: 0;
+  }
+}
+
+@layer components {
+  .font-devanagari { font-family: 'Tiro Devanagari Hindi', serif; }
+  .font-mono-tech  { font-family: 'JetBrains Mono', monospace; }
+
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-card {
+    @apply glass rounded-2xl;
+    box-shadow: var(--shadow-panel);
+  }
+
+  .gradient-text-brand {
+    background: var(--gradient-brand);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+
+  .gradient-text-tricolor {
+    background: var(--gradient-tricolor);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+  }
+
+  .ring-tricolor {
+    background:
+      linear-gradient(hsl(var(--surface)), hsl(var(--surface))) padding-box,
+      var(--gradient-tricolor) border-box;
+    border: 1px solid transparent;
+  }
+
+  .scan-line {
+    position: relative; overflow: hidden;
+  }
+  .scan-line::after {
+    content: '';
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, hsl(var(--primary-glow) / 0.8), transparent);
+    animation: scan 3.2s var(--ease-out-expo) infinite;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-mono-tech tracking-wide;
+    background: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .pulse-dot {
+    width: 8px; height: 8px; border-radius: 9999px;
+    background: hsl(var(--accent));
+    box-shadow: 0 0 0 0 hsl(var(--accent) / 0.6);
+    animation: pulse 1.6s ease-out infinite;
+  }
+}
+
+@layer utilities {
+  .text-shadow-glow { text-shadow: 0 0 32px hsl(var(--primary) / 0.45); }
+  .bg-grid {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
+
+@keyframes scan {
+  0%   { top: 0%; opacity: 0; }
+  20%  { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--accent) / 0.55); }
+  100% { box-shadow: 0 0 0 14px hsl(var(--accent) / 0); }
+}
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}

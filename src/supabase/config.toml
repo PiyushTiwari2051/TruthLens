@@ -1,0 +1,10 @@
+project_id = "veyjyrtorjxkpxzfohsc"
+
+[functions.analyze]
+verify_jwt = false
+
+[functions.seed-dataset]
+verify_jwt = false
+
+[functions.dataset-stats]
+verify_jwt = false
