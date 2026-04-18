@@ -1,16 +1,21 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, MessageSquareShare } from "lucide-react";
 import heroImg from "@/assets/truthlens-hero.jpeg";
 import { Logo, BrandWordmark } from "@/components/truthlens/Logo";
 import { AnalyzeConsole } from "@/components/truthlens/AnalyzeConsole";
+import type { TruthLensAnalyzeResponse } from "@/types/truthlensAnalyze";
 import { AnalysisReport } from "@/components/truthlens/AnalysisReport";
+import { ThemeToggle } from "@/components/truthlens/ThemeToggle";
+import { WhatsAppBridgeDialog } from "@/components/truthlens/WhatsAppBridgeDialog";
 
 const Index = () => {
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<TruthLensAnalyzeResponse | null>(null);
+  const [waOpen, setWaOpen] = useState(false);
 
   return (
     <main className="relative min-h-screen">
+      <WhatsAppBridgeDialog open={waOpen} onOpenChange={setWaOpen} onAnalysisResult={setResult} />
       {/* NAV */}
       <header className="relative z-20 border-b border-border/40 bg-background/40 backdrop-blur-xl">
         <div className="container flex h-16 items-center justify-between">
@@ -18,6 +23,17 @@ const Index = () => {
             <Logo size={32} />
             <BrandWordmark />
           </a>
+          <nav className="flex items-center gap-2 md:gap-4">
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => setWaOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald/10 px-3 py-2 md:px-4 text-xs md:text-sm font-semibold text-emerald hover:bg-emerald/20 transition ring-1 ring-emerald/30 shadow-glow-emerald"
+            >
+              <MessageSquareShare className="h-4 w-4 shrink-0" />
+              Connect WhatsApp
+            </button>
+          </nav>
         </div>
       </header>
 
@@ -60,7 +76,7 @@ const Index = () => {
         <div className="container py-16 md:py-20">
            <div className="mb-10 max-w-2xl">
              <h2 className="text-3xl md:text-4xl font-bold tracking-tight">Run an analysis</h2>
-             <p className="mt-3 text-muted-foreground">Drop a forwarded message, headline, or image to verify its authenticity.</p>
+             <p className="mt-3 text-muted-foreground">Drop text, a URL, an image, audio, video, or a PDF/DOCX — we extract media locally, run multimodal forensics, and annotate documents line-by-line.</p>
            </div>
           <div className="grid gap-6">
             <AnalyzeConsole onResult={setResult} />

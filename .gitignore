@@ -23,3 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# WhatsApp Baileys session (local only — never commit)
+server/whatsapp-bridge/baileys_auth/
+server/whatsapp-bridge/node_modules/

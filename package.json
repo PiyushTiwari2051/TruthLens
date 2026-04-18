@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "whatsapp-bridge": "cd server/whatsapp-bridge && npm install && node index.js",
+    "whatsapp-bridge:kill": "node server/whatsapp-bridge/kill-port.mjs",
+    "whatsapp-bridge:restart": "npm run whatsapp-bridge:kill && npm run whatsapp-bridge"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -50,8 +53,11 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.38.0",
     "input-otp": "^1.4.2",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.462.0",
+    "mammoth": "^1.12.0",
     "next-themes": "^0.3.0",
+    "pdfjs-dist": "^5.6.205",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",

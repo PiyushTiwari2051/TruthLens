@@ -2,9 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a1024" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f7fb" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a1024" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("truthlens-theme");
+          var dark = false;
+          if (t === "dark") dark = true;
+          else if (t === "light") dark = false;
+          else dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.classList.toggle("dark", dark);
+        } catch (e) {}
+      })();
+    </script>
     <title>TruthLens — AI Misinformation Detection for India</title>
     <meta name="description" content="Multilingual AI misinformation, deepfake & voice-clone detection engine for India. Qdrant-powered vector RAG, 22 Indian languages, real-time fact verification." />
     <link rel="canonical" href="/" />

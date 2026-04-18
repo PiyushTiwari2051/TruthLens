@@ -1,16 +1,17 @@
-import { Shield, Eye } from "lucide-react";
+import { Circle, Check } from "lucide-react";
 import { motion } from "framer-motion";
 
 export const Logo = ({ size = 36 }: { size?: number }) => (
   <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
     <motion.div
       className="absolute inset-0 rounded-full"
-      style={{ background: "var(--gradient-brand)", filter: "blur(14px)", opacity: 0.55 }}
-      animate={{ scale: [1, 1.15, 1] }}
-      transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+      style={{ background: "var(--gradient-brand)", opacity: 0.18 }}
+      animate={{ scale: [1, 1.06, 1], opacity: [0.18, 0.28, 0.18] }}
+      transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
     />
-    <Shield className="absolute text-primary-glow" style={{ width: size, height: size }} strokeWidth={1.5} />
-    <Eye className="relative text-saffron" style={{ width: size * 0.5, height: size * 0.5 }} strokeWidth={2} />
+    <Circle className="absolute text-primary-glow" style={{ width: size, height: size }} strokeWidth={1.8} />
+    <Circle className="absolute text-primary/70" style={{ width: size * 0.64, height: size * 0.64 }} strokeWidth={1.8} />
+    <Check className="relative text-saffron" style={{ width: size * 0.38, height: size * 0.38 }} strokeWidth={2.4} />
   </div>
 );
 
@@ -23,7 +24,7 @@ export const BrandWordmark = () => (
       </span>
     </div>
     <div className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-muted-foreground font-mono-tech">
-      Fact Verification Engine
+      AI Misinformation Detector
     </div>
   </div>
 );

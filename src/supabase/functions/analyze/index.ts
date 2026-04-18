@@ -9,6 +9,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const QDRANT_URL = Deno.env.get("QDRANT_URL");
 const QDRANT_API_KEY = Deno.env.get("QDRANT_API_KEY");
+const TAVILY_API_KEY = Deno.env.get("TAVILY_API_KEY") ?? "";
 
 const QDRANT_COLLECTION = "truthlens_claims";
 const EMBED_MODEL = "google/gemini-3-flash-preview";
@@ -73,6 +74,81 @@ async function qdrantUpsert(id: string, vector: number[], payload: Record<string
   } catch (_e) { /* best-effort mirror */ }
 }
 
+async function tavilySearch(query: string) {
+  if (!TAVILY_API_KEY.trim() || !query) return "";
+  try {
+    const r = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: TAVILY_API_KEY,
+        query,
+        search_depth: "basic",
+        include_answers: false,
+        include_domains: ["pib.gov.in", "who.int", "rbi.org.in", "altnews.in", "boomlive.in", "vishvasnews.com", "factly.in", "smhoaxslayer.com", "thehindu.com", "ptinews.com"],
+        max_results: 3,
+      }),
+    });
+    if (!r.ok) return "";
+    const j = await r.json();
+    return (j.results || []).map((res: any, i: number) => 
+      `Search Result [${i+1}]:\nTitle: ${res.title}\nURL: ${res.url}\nContent: ${res.content}`
+    ).join("\n\n");
+  } catch (_e) { return ""; }
+}
+
+type DocRow = { line: string; authenticity: string; reasoning?: string };
+
+function parseDocumentRow(item: unknown): DocRow | null {
+  if (!item || typeof item !== "object") return null;
+  const o = item as Record<string, unknown>;
+  const line = String(o.line ?? o.text ?? o.content ?? o.line_text ?? "").trimEnd();
+  if (!line.trim()) return null;
+  let auth = String(o.authenticity ?? o.Authenticity ?? o.verdict ?? o.label ?? "UNVERIFIED")
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  if (auth === "REFUTED" || auth === "FALSE") auth = "FAKE";
+  if (auth === "SUPPORTED" || auth === "TRUE") auth = "REAL";
+  if (auth === "MISLEADING_CONTEXT") auth = "MISLEADING";
+  if (auth === "UNVERIFIABLE") auth = "UNVERIFIED";
+  if (!["REAL", "FAKE", "MISLEADING", "UNVERIFIED"].includes(auth)) auth = "UNVERIFIED";
+  const reasoning = o.reasoning != null ? String(o.reasoning)
+    : o.evidence != null ? String(o.evidence) : undefined;
+  return { line, authenticity: auth, reasoning };
+}
+
+/** Guarantees non-empty document_analysis for document modality so clients can render + export. */
+function ensureDocumentAnalysis(report: Record<string, unknown>, inputModality: string, inputText: string) {
+  if (inputModality !== "document" || !inputText.trim()) return;
+  const sourceLines = inputText
+    .split(/\r?\n/)
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim().length > 0);
+  const raw = report.document_analysis ?? report.documentAnalysis;
+  const fromModel: DocRow[] = [];
+  if (Array.isArray(raw)) {
+    for (const it of raw) {
+      const p = parseDocumentRow(it);
+      if (p) fromModel.push(p);
+    }
+  }
+  if (sourceLines.length === 0) {
+    report.document_analysis = fromModel.length ? fromModel : [];
+    return;
+  }
+  report.document_analysis = sourceLines.map((line, i) => {
+    const m = fromModel[i];
+    if (!m) {
+      return {
+        line,
+        authenticity: "UNVERIFIED",
+        reasoning: "No model row for this source line index — check overall claims and evidence.",
+      };
+    }
+    return { line, authenticity: m.authenticity, reasoning: m.reasoning };
+  });
+}
+
 // ---------- main ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -80,29 +156,42 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const inputText: string = (body.text ?? "").toString().trim();
+    let inputText: string = (body.text ?? "").toString().trim();
     const inputUrl: string | undefined = body.url;
     const imageBase64: string | undefined = body.image_base64;
-    const inputModality: string = body.modality ?? (imageBase64 ? "image" : inputUrl ? "url" : "text");
+    const documentText: string = (body.document_text ?? "").toString().trim();
+    const documentFilename: string | undefined = body.document_filename;
+    const videoFrames: string[] = Array.isArray(body.video_frames_base64) ? body.video_frames_base64 : [];
+    const videoMeta = body.video_meta as Record<string, unknown> | undefined;
+    const audioForensicsClient = body.audio_forensics_client as Record<string, unknown> | undefined;
+    const mimeHint: string | undefined = body.mime_type;
+    const inputModality: string = (body.modality ?? (imageBase64 ? "image" : inputUrl ? "url" : "text")).toString();
 
-    if (!inputText && !imageBase64 && !inputUrl) {
-      return new Response(JSON.stringify({ error: "Provide text, url, or image_base64" }),
+    if (documentText && inputModality === "document") inputText = documentText;
+    if (!inputText && documentText) inputText = documentText;
+
+    const hasVideoFrames = videoFrames.length > 0;
+    const hasMediaPayload = !!(inputText || imageBase64 || inputUrl || hasVideoFrames);
+
+    if (!hasMediaPayload) {
+      return new Response(JSON.stringify({ error: "Provide text, url, image_base64, document_text, or video_frames_base64" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
 
     // ---------- vector retrieval (pgvector + Qdrant in parallel) ----------
-    const queryForEmbed = inputText || inputUrl || "image content submitted for forensic analysis";
+    const queryForEmbed = inputText || inputUrl || (hasVideoFrames ? "video keyframes submitted for forensic analysis" : "image content submitted for forensic analysis");
     const vec = await llmEmbed(queryForEmbed);
 
-    const [pgvectorMatchesRes, qdrantMatches] = await Promise.all([
+    const [pgvectorMatchesRes, qdrantMatches, liveSearchResults] = await Promise.all([
       supabase.rpc("match_claims", {
         query_embedding: vec as unknown as string,
         match_count: 5,
         similarity_threshold: 0.5,
       }),
       qdrantSearch(vec, 5),
+      tavilySearch(queryForEmbed),
     ]);
     const pgvectorMatches = (pgvectorMatchesRes.data ?? []) as any[];
 
@@ -119,6 +208,8 @@ Deno.serve(async (req) => {
 detection and countering engine for the Indian information ecosystem. You support Hindi, Tamil, Bengali,
 English and other Indian languages. Be rigorous, evidence-driven, and politically neutral.
 
+Output modality in structured JSON must be exactly: "${inputModality}".
+
 Follow this protocol:
 1. Identify modality and detect the language (ISO 639-1 code).
 2. Extract every factual claim as {subject, predicate, object, temporal_ref}.
@@ -126,28 +217,63 @@ Follow this protocol:
    misinformation, deepfake/EXIF/lipsync indicators when applicable.
 4. Use the provided RAG matches from a Qdrant-mirrored vector DB of previously debunked claims.
    If a strong match (>0.85 similarity) shares a debunked verdict, INHERIT it and cite it.
-5. Cross-check trusted sources (PIB India, WHO, RBI, ECI, NDTV, The Hindu, AltNews, BoomLive, PTI).
+5. Cross-check against the LIVE SEARCH RESULTS provided below.
 6. Compute a Truth Score (0–100, higher = more credible).
 7. Identify manipulation techniques from: IMPERSONATION, FABRICATED_QUOTE, OUT_OF_CONTEXT,
    STATISTICS_MANIPULATION, EMOTIONAL_EXPLOITATION, DEEPFAKE, VOICE_CLONE, SELECTIVE_EDITING,
    FALSE_URGENCY, STRAWMAN, CHERRY_PICKING, FALSE_AUTHORITY.
 8. Generate a multilingual rebuttal in the SAME detected language plus an English summary.
 9. Generate a WhatsApp-ready alert when score < 40.
-10. NEVER invent specific URLs — cite organisations only.
+10. If modality is 'document', provide 'document_analysis' array: one entry per non-empty source line (split on newlines) with authenticity + reasoning. (T10 Pipeline)
+11. If modality is 'video', provide 'video_specific_signals' describing lip-sync, face boundary, temporal consistency, keyed off the attached keyframes. (V1-V8 Pipeline)
+12. If modality is 'audio', provide 'audio_specific_signals' like Jitter/Shimmer, MFCC-style anomalies, calibrated to any CLIENT DSP SUMMARY numbers provided. (A1-A7 Pipeline)
+13. If modality is 'audio' or 'video', also return 'multimodal_explain': 3–6 sentences explaining how the media was interpreted and how the forensic signals support the verdict.
+14. Use the exact URLs from the LIVE SEARCH RESULTS in your evidence sources. NEVER hallucinate or invent URLs. If no URL is available in the provided context, leave it blank.
 
 Use the structured output tool. Be concise, factual, and decisive.
 
 KNOWN-DEBUNKED CONTEXT (RAG):
 ${ragContext || "(no strong matches in the vector DB)"}
+
+LIVE SEARCH RESULTS (TAVILY API):
+${liveSearchResults || "(no recent news found)"}
 `;
 
     // ---------- user content (multimodal) ----------
     const userContent: any[] = [];
-    if (inputText) userContent.push({ type: "text", text: `CONTENT TO ANALYSE:\n${inputText}` });
-    if (inputUrl) userContent.push({ type: "text", text: `SOURCE URL: ${inputUrl}` });
-    if (imageBase64) {
-      userContent.push({ type: "text", text: "Analyse this image for misinformation, deepfake or out-of-context use. Describe what you see, extract any overlaid text, and assess credibility." });
-      userContent.push({ type: "image_url", image_url: { url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}` } });
+    const docName = documentFilename ? ` (${documentFilename})` : "";
+    const metaBits = [
+      mimeHint ? `MIME: ${mimeHint}` : "",
+      videoMeta ? `VIDEO_META_JSON: ${JSON.stringify(videoMeta)}` : "",
+      audioForensicsClient ? `CLIENT_DSP_JSON: ${JSON.stringify(audioForensicsClient)}` : "",
+    ].filter(Boolean).join("\n");
+
+    if (inputModality === "document" && inputText) {
+      userContent.push({
+        type: "text",
+        text: `DOCUMENT${docName} — line-by-line forensic pass (T10).\n${metaBits ? metaBits + "\n" : ""}---\n${inputText}\n---\nMANDATORY: In your truth_report tool call you MUST include document_analysis as a JSON array with EXACTLY one object per non-empty line above (same order). Each object: { "line": "<exact line text>", "authenticity": "REAL"|"FAKE"|"MISLEADING"|"UNVERIFIED", "reasoning": "<brief>" }. Count lines after splitting on newlines; skip only completely blank lines.`,
+      });
+    } else if (inputModality === "video") {
+      userContent.push({
+        type: "text",
+        text: `VIDEO FORENSICS (V1–V8).\n${metaBits ? metaBits + "\n" : ""}NARRATIVE / CONTAINER:\n${inputText || "(no sidecar text)"}\n\n${hasVideoFrames ? `Attached: ${videoFrames.length} sampled keyframes.` : "No bitmap keyframes supplied — rely on narrative and priors, and keep confidence lower."}\nReturn video_specific_signals + multimodal_explain.`,
+      });
+      for (const frame of videoFrames.slice(0, 8)) {
+        const url = typeof frame === "string" && frame.startsWith("data:") ? frame : `data:image/jpeg;base64,${frame}`;
+        userContent.push({ type: "image_url", image_url: { url } });
+      }
+    } else if (inputModality === "audio") {
+      userContent.push({
+        type: "text",
+        text: `AUDIO FORENSICS (A1–A7).\n${metaBits ? metaBits + "\n" : ""}NOTES:\n${inputText || "(no transcript)"}\nReturn audio_specific_signals + multimodal_explain grounded in CLIENT_DSP_JSON if present.`,
+      });
+    } else {
+      if (inputText) userContent.push({ type: "text", text: `CONTENT TO ANALYSE:\n${inputText}` });
+      if (inputUrl) userContent.push({ type: "text", text: `SOURCE URL: ${inputUrl}` });
+      if (imageBase64) {
+        userContent.push({ type: "text", text: "Analyse this image for misinformation, deepfake or out-of-context use. Describe what you see, extract any overlaid text, and assess credibility." });
+        userContent.push({ type: "image_url", image_url: { url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}` } });
+      }
     }
 
     // ---------- structured tool ----------
@@ -212,6 +338,7 @@ ${ragContext || "(no strong matches in the vector DB)"}
                   organisation: { type: "string" },
                   finding: { type: "string" },
                   stance: { type: "string", enum: ["SUPPORTS","REFUTES","CONTEXT","UNRELATED"] },
+                  url: { type: "string" },
                 },
                 required: ["organisation", "finding", "stance"], additionalProperties: false,
               },
@@ -221,6 +348,39 @@ ${ragContext || "(no strong matches in the vector DB)"}
             whatsapp_alert: { type: "string", description: "Short share-ready alert when score < 40, else empty string" },
             counter_narrative: { type: "string", description: "One-sentence canonical truth statement" },
             topic_tags: { type: "array", items: { type: "string" } },
+            document_analysis: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  line: { type: "string" },
+                  authenticity: { type: "string", enum: ["REAL", "FAKE", "MISLEADING", "UNVERIFIED"] },
+                  reasoning: { type: "string" }
+                },
+                required: ["line", "authenticity"]
+              }
+            },
+            audio_specific_signals: {
+              type: "object",
+              properties: {
+                mfcc_jitter: { type: "number", description: "Jitter score" },
+                mfcc_shimmer: { type: "number", description: "Shimmer score" },
+                splicing_detected: { type: "boolean" },
+                synthesis_tool_signature: { type: "string" }
+              }
+            },
+            video_specific_signals: {
+              type: "object",
+              properties: {
+                lip_sync_offset_ms: { type: "number" },
+                face_boundary_anomaly: { type: "boolean" },
+                temporal_inconsistency: { type: "boolean" }
+              }
+            },
+            multimodal_explain: {
+              type: "string",
+              description: "For audio/video: how signals were read and how they support the verdict (3–6 sentences). Empty for text/image/document/url.",
+            },
           },
           required: [
             "detected_language", "modality", "truth_score", "overall_verdict",
@@ -268,13 +428,15 @@ ${ragContext || "(no strong matches in the vector DB)"}
     if (!toolCall?.function?.arguments) {
       throw new Error("AI did not return a structured report");
     }
-    const report = JSON.parse(toolCall.function.arguments);
+    const report = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
 
     // AI occasionally hallucinates camelCase or old 'satya_score' naming
     if (typeof report.truth_score !== "number") {
-      report.truth_score = report.truthScore ?? report.satya_score ?? 
-        (report.overall_verdict === "TRUE" ? 95 : report.overall_verdict === "FALSE" ? 15 : 50);
+      report.truth_score = (report.truthScore ?? report.satya_score ??
+        (report.overall_verdict === "TRUE" ? 95 : report.overall_verdict === "FALSE" ? 15 : 50)) as number;
     }
+
+    ensureDocumentAnalysis(report, inputModality, inputText);
 
     // ---------- persist analysis ----------
     const enrichedQdrantMatches = qdrantMatches.map((m: any) => ({
@@ -355,6 +517,7 @@ ${ragContext || "(no strong matches in the vector DB)"}
       analysis_id: analysisId,
       processing_ms: processingMs,
       report,
+      source_document_text: inputModality === "document" ? inputText.slice(0, 48_000) : undefined,
       pgvector_matches: pgvectorMatches,
       qdrant_matches: enrichedQdrantMatches,
       summary_text: report.summary,
